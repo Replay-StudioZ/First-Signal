@@ -1,0 +1,16 @@
+# Ignoring Roblox Studio binaries
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# Ignoring temporary Rojo files
+*.rojo
+
+# Ignoring folders with cash and settings of IDE
+.vscode/
+.idea/
+
+# Ignoring system files
+.DS_Store
+Thumbs.db
