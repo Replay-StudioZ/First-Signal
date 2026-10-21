@@ -40,7 +40,7 @@ local function setupCharacter(character)
 		if descendant:IsA("BasePart") then 
 			descendant.CastShadow = false 
 		end 
-	end) 
+	end)
 end 
 
 if player.Character then 

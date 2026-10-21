@@ -10,7 +10,7 @@ local LegIKController = {}
 
 local CONFIG = {
     RaycastDistance = 10,
-    FootOffset = 0.5,
+    FootOffset = 0,
 }
 
 function LegIKController:Update(character: Model, legSide: string)
