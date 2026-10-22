@@ -20,8 +20,8 @@ local function onCharacterAdded(character: Model)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then return end
 
-        LegIKController:Update(character, "Right")
-        LegIKController:Update(character, "Left")
+        --LegIKController:Update(character, "Right")
+        --LegIKController:Update(character, "Left")
     end
 
     renderConnection = RunService.RenderStepped:Connect(updateIK)

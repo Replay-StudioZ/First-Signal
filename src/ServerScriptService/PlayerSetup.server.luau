@@ -3,14 +3,7 @@
 local Players = game:GetService("Players")
 
 local CONFIG = {
-	NECK_C0 = CFrame.new(0, 0.8, 0),
-	NECK_C1 = CFrame.new(0, -0.5, 0),
-
-	LEG_DENSITY = 0.7,
-	LEG_FRICTION = 0.8,
-	LEG_ELASTICITY = 0,
-
-	HIP_HEIGHT_OFFSET = 0.05,
+	HIP_HEIGHT_OFFSET = 0
 }
 
 local function configureHumanoid(humanoid: Humanoid)
@@ -26,8 +19,12 @@ local function configureHumanoid(humanoid: Humanoid)
 end
 
 local function replaceHeadWithReal(player: Player, character: Model): boolean
-	local layoutHead = character:WaitForChild("Head") :: BasePart
-	local upperTorso = character:WaitForChild("UpperTorso") :: BasePart
+	local layoutHead = character:FindFirstChild("Head") :: BasePart?
+	local upperTorso = character:FindFirstChild("UpperTorso") :: BasePart?
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not layoutHead or not upperTorso or not hrp then return false end
+
+	hrp.Anchored = true
 
 	local success, playerModel = pcall(function()
 		return Players:CreateHumanoidModelFromUserIdAsync(player.UserId)
@@ -35,34 +32,23 @@ local function replaceHeadWithReal(player: Player, character: Model): boolean
 
 	if not success or not playerModel then
 		warn("Failed to load player model for: " .. player.Name)
+		hrp.Anchored = false
 		return false
 	end
 
 	local realHead = playerModel:FindFirstChild("Head") :: BasePart?
 	if not realHead then
-		warn("The player model has no head: " .. player.Name)
+		warn("The player model has not head: " .. player.Name)
 		playerModel:Destroy()
+		hrp.Anchored = false
 		return false
 	end
 
-	realHead.Parent = nil
-	
-	realHead.CFrame = layoutHead.CFrame
-	realHead.CanCollide = layoutHead.CanCollide
+	local targetCFrame = layoutHead.CFrame
+	local canCollide = layoutHead.CanCollide
 
 	local oldNeck = layoutHead:FindFirstChild("Neck") or upperTorso:FindFirstChild("Neck")
 	if oldNeck then oldNeck:Destroy() end
-
-	layoutHead:Destroy()
-
-	realHead.Parent = character
-	realHead:SetNetworkOwner(player)
-
-	for _, child in ipairs(realHead:GetChildren()) do
-		if child:IsA("Motor6D") and child.Name == "Neck" then
-			child:Destroy()
-		end
-	end
 
 	for _, child in ipairs(upperTorso:GetChildren()) do
 		if child:IsA("Motor6D") and child.Name == "Neck" then
@@ -70,12 +56,29 @@ local function replaceHeadWithReal(player: Player, character: Model): boolean
 		end
 	end
 
+	layoutHead:Destroy()
+
+	realHead.Parent = character
+	realHead.CFrame = targetCFrame
+	realHead.CanCollide = canCollide
+	realHead:SetNetworkOwner(player)
+
+	local neckAttUpper = upperTorso:FindFirstChild("NeckRigAttachment") :: Attachment?
+	local neckAttHead = realHead:FindFirstChild("NeckAttachment") :: Attachment?
+
 	local newNeck = Instance.new("Motor6D")
 	newNeck.Name = "Neck"
 	newNeck.Part0 = upperTorso
 	newNeck.Part1 = realHead
-	newNeck.C0 = CONFIG.NECK_C0
-	newNeck.C1 = CONFIG.NECK_C1
+
+	if neckAttUpper and neckAttHead then
+		newNeck.C0 = neckAttUpper.CFrame
+		newNeck.C1 = neckAttHead.CFrame
+	else
+		newNeck.C0 = CFrame.new(0, 0.8, 0)
+		newNeck.C1 = CFrame.new(0, -0.5, 0)
+	end
+
 	newNeck.Parent = upperTorso
 
 	for _, object in ipairs(playerModel:GetChildren()) do
@@ -90,25 +93,52 @@ local function replaceHeadWithReal(player: Player, character: Model): boolean
 
 	playerModel:Destroy()
 
+	hrp.Anchored = false
+
+	local humanoid = character:FindFirstChild("Humanoid")
+	if humanoid then
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+	end
+
 	return true
 end
 
 local function calculateHipHeight(humanoid: Humanoid, character: Model)
-end
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
 
-local function configureLegPhysics(character: Model)
-	local legPartNames = { "RightUpperLeg", "LeftUpperLeg", "RightLowerLeg", "LeftLowerLeg", "RightFoot", "LeftFoot" }
+	local lowestY = math.huge
+	local footPartNames = { "RightFoot", "LeftFoot" }
 
-	for _, partName in ipairs(legPartNames) do
+	for _, partName in ipairs(footPartNames) do
 		local part = character:FindFirstChild(partName) :: BasePart?
 
 		if part then
-			part.CustomPhysicalProperties = PhysicalProperties.new(CONFIG.LEG_DENSITY, CONFIG.LEG_FRICTION, CONFIG.LEG_ELASTICITY, 0, 0)
+			local bottomY = part.Position.Y - (part.Size.Y / 2)
+
+			if bottomY < lowestY then
+				lowestY = bottomY
+			end
 		end
+	end
+
+	if lowestY == math.huge then return end
+
+	local hrpBottomY = hrp.Position.Y - (hrp.Size.Y / 2)
+	local calculatedHeight = (hrpBottomY - lowestY) + CONFIG.HIP_HEIGHT_OFFSET
+
+	if calculatedHeight > 0 then
+		humanoid.HipHeight = calculatedHeight
+
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+		task.wait(0.05)
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 	end
 end
 
 local function onCharacterAdded(player: Player, character: Model)
+	task.wait(0.1)
+	
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 
 	configureHumanoid(humanoid)
@@ -120,10 +150,9 @@ local function onCharacterAdded(player: Player, character: Model)
 	end
 
 	calculateHipHeight(humanoid, character)
-	configureLegPhysics(character)
 
 	humanoid.Died:Connect(function()
-		humanoid.PlatformStand = true
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 	end)
 end
 
